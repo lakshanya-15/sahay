@@ -219,7 +219,8 @@ const DoctorDashboard = ({ user, onStartCall }) => {
             <h1 className="text-gradient">Doctor Queue Management</h1>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '2.5rem' }}>
                 {q.map(x => {
-                    const reasonObj = JSON.parse(x.reasoning || "{}");
+                    let reasonObj = { summary: x.reasoning };
+                    try { if (x.reasoning?.startsWith('{')) reasonObj = JSON.parse(x.reasoning); } catch (e) { }
                     return (
                         <div key={x.id} className="card" style={{ borderLeft: `8px solid ${x.severity === 'EMERGENCY' ? '#ef4444' : '#f59e0b'}` }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
