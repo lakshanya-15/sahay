@@ -1,0 +1,68 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id             String    @id @default(uuid())
+  phone          String    @unique
+  name           String?
+  role           String    @default("PATIENT") // PATIENT, DOCTOR, ADMIN
+  createdAt      DateTime  @default(now())
+  patientProfile PatientProfile?
+  doctorProfile  DoctorProfile?
+}
+
+model PatientProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id])
+  age            Int?
+  gender         String?
+  medicalHistory String?        // JSON or string
+  consultations  Consultation[]
+  queueEntry     QueueEntry?
+}
+
+model DoctorProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id])
+  specialization String?
+  isAvailable    Boolean        @default(true)
+  consultations  Consultation[]
+}
+
+model QueueEntry {
+  id               String         @id @default(uuid())
+  patientId        String         @unique
+  patient          PatientProfile @relation(fields: [patientId], references: [id])
+  severity         String         // EMERGENCY, MODERATE, ROUTINE
+  riskScore        Int            @default(0)
+  status           String         @default("WAITING") // WAITING, IN_CONSULTATION, COMPLETED
+  symptoms         String         // JSON string
+  reasoning        String?
+  priority         Float          @default(0) // Calculated priority score
+  joinedAt         DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Consultation {
+  id        String         @id @default(uuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id])
+  doctorId  String
+  doctor    DoctorProfile  @relation(fields: [doctorId], references: [id])
+  status    String         @default("COMPLETED")
+  notes     String?
+  createdAt DateTime       @default(now())
+}
