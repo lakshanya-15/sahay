@@ -5,7 +5,7 @@ import Peer from 'peerjs';
 import {
     Activity, Clock, Video, PhoneCall, ChevronRight, Send, ArrowRightCircle, LogOut, ChevronLeft, Heart,
     Zap, Share2, ClipboardList, X, FileText, UserCheck, HeartPulse, History, AlertTriangle, UploadCloud, User, Ruler, Scale, ShieldAlert, Star, MapPin,
-    Monitor, Info, Bell, CheckCircle2, AlertCircle, TrendingUp
+    Monitor, Info, Bell, CheckCircle2, AlertCircle, TrendingUp, Mic
 } from 'lucide-react';
 
 const API_BASE = 'https://sahay-6doo.onrender.com/api';
