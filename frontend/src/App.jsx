@@ -90,7 +90,7 @@ const VideoCallModal = ({ roomId, remoteName, onEnd, doctorPeerId }) => {
             <div style={{ flex: 1, display: 'flex', position: 'relative' }}>
                 <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 <div style={{ position: 'absolute', top: '2rem', left: '2rem', background: 'rgba(0,0,0,0.5)', padding: '0.5rem 1rem', borderRadius: '12px', color: 'white' }}>
-                    {callActive ? `Live: ${remoteName}` : 'Waiting for connection...'}
+                    {callActive ? `Live: ${remoteName}` : 'Establishing Secure Connection...'}
                 </div>
                 <video ref={localVideoRef} autoPlay playsInline muted style={{ position: 'absolute', bottom: '2rem', right: '2rem', width: '200px', height: '140px', borderRadius: '12px', border: '2px solid white', objectFit: 'cover' }} />
             </div>
@@ -132,6 +132,17 @@ const PrescriptionModal = ({ patient, doctorId, onSave, onClose }) => {
     );
 };
 
+// --- Shared Components ---
+
+const HealthMetricStat = ({ icon: Icon, label, value, color }) => (
+    <div className="stat-card" style={{ borderTop: `4px solid ${color}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+            <Icon size={14} /> {label}
+        </div>
+        <div style={{ fontSize: '1.25rem', fontWeight: '850', color: '#111827' }}>{value}</div>
+    </div>
+);
+
 // --- Dashboards ---
 
 const PatientDashboard = ({ user, setView, onStartCall }) => {
@@ -153,18 +164,9 @@ const PatientDashboard = ({ user, setView, onStartCall }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', margin: '2.5rem 0' }}>
-                <div className="stat-card" style={{ borderTop: '4px solid var(--primary)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#6b7280', fontSize: '0.8rem' }}><User size={14} /> {t.age}</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: '800' }}>{q?.profile?.age || '--'}</div>
-                </div>
-                <div className="stat-card" style={{ borderTop: `4px solid ${q?.severity === 'EMERGENCY' ? '#ef4444' : '#10b981'}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#6b7280', fontSize: '0.8rem' }}><TrendingUp size={14} /> {t.results}</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: '800' }}>{q?.priority ? `${Math.round(q.priority)}%` : '--'}</div>
-                </div>
-                <div className="stat-card" style={{ borderTop: '4px solid #f59e0b' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#6b7280', fontSize: '0.8rem' }}><Clock size={14} /> {t.wait_time}</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: '800' }}>{q?.position ? `${q.position * 10}m` : '--'}</div>
-                </div>
+                <HealthMetricStat icon={User} label={t.age} value={q?.profile?.age || '--'} color="var(--primary)" />
+                <HealthMetricStat icon={TrendingUp} label={t.results} value={q?.priority ? `${Math.round(q.priority)}%` : '--'} color={q?.severity === 'EMERGENCY' ? '#ef4444' : '#10b981'} />
+                <HealthMetricStat icon={Clock} label={t.wait_time} value={q?.position ? `${q.position * 10}m` : '--'} color="#f59e0b" />
             </div>
 
             <div className="dashboard-grid">
@@ -205,12 +207,11 @@ const DoctorDashboard = ({ user, onStartCall }) => {
     useEffect(() => { fetchQ(); socket.on('queue_updated', fetchQ); return () => socket.off('queue_updated'); }, []);
 
     const handleAction = async (queueId, patientId) => {
-        // Telemedicine: Doctor generates a Peer ID on the fly for this session
         const peer = new Peer();
         peer.on('open', async (pid) => {
             await axios.post(`${API_BASE}/doctor/action`, { queueId, action: 'START_CONSULTATION', peerId: pid });
             const entry = q.find(x => x.id === queueId);
-            onStartCall(entry.callRoomId, entry.name, null); // Doctor doesn't need a target peerId initially, they listen
+            onStartCall(entry.callRoomId, entry.name, null);
             fetchQ();
         });
     };
@@ -223,7 +224,7 @@ const DoctorDashboard = ({ user, onStartCall }) => {
 
     return (
         <div className="container animate-up">
-            <h1 className="text-gradient">Physician Control Panel</h1>
+            <h1 className="text-gradient">Physician Dashboard</h1>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginTop: '3rem' }}>
                 {q.map(x => {
                     const reasonObj = JSON.parse(x.reasoning || "{}");
@@ -232,7 +233,7 @@ const DoctorDashboard = ({ user, onStartCall }) => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
                                     <h2>{x.name}</h2>
-                                    <p>{x.age}y {x.gender} | Priority Level: <strong>{x.severity} ({Math.round(x.priority)}%)</strong></p>
+                                    <p>{x.age}y {x.gender} | Priority: <strong>{x.severity} ({Math.round(x.priority)}%)</strong></p>
                                     <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
                                         {reasonObj.flags?.map(f => <span key={f} style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', background: '#fee', color: '#e44', borderRadius: '4px', fontWeight: '800' }}>#{f}</span>)}
                                     </div>
@@ -261,6 +262,7 @@ const App = () => {
     const [activeCall, setActiveCall] = useState(null);
     const [result, setResult] = useState(null);
     const [nfs, setNfs] = useState([]);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         socket.on('call_started', (p) => {
@@ -271,13 +273,22 @@ const App = () => {
         return () => socket.off('call_started');
     }, [user]);
 
+    const handleIntakeSubmit = async (ans, sym) => {
+        setLoading(true);
+        try {
+            const r = await axios.post(`${API_BASE}/intake/finalize`, { userId: user.id, answers: ans, symptom: sym });
+            setResult(r.data); setView('RESULT');
+        } catch (e) { alert("Analysis Error: Please try again."); }
+        finally { setLoading(false); }
+    };
+
     if (!token) return (
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f2f6f4' }}>
             <div className="card animate-up" style={{ width: '100%', maxWidth: '480px', textAlign: 'center', padding: '4rem 3rem' }}>
                 <Activity size={50} color="var(--primary)" style={{ marginBottom: '1.5rem' }} />
                 <h1 className="text-gradient">SAHAY</h1>
-                <p style={{ marginBottom: '3rem' }}>{t.subtitle}</p>
-                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '2rem' }}>
+                <p style={{ marginBottom: '2rem' }}>{t.subtitle}</p>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '2.5rem' }}>
                     <button className={lang === 'en' ? 'secondary' : 'outline'} onClick={() => setLang('en')}>EN</button>
                     <button className={lang === 'hi' ? 'secondary' : 'outline'} onClick={() => setLang('hi')}>हिन्दी</button>
                 </div>
@@ -288,6 +299,7 @@ const App = () => {
 
     return (
         <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
+            {loading && <div className="loading-overlay"> <div className="spinner"></div> <p style={{ color: 'white', marginTop: '1rem', fontWeight: 'bold' }}>Analyzing Clinical Profile...</p> </div>}
             <nav className="glass-nav" style={{ margin: '1rem', padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: '1rem', zIndex: 1000 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} onClick={() => setView('DASHBOARD')}><Activity color="var(--primary)" size={24} /><h3 style={{ margin: 0, fontWeight: '900' }}>SAHAY</h3></div>
                 <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
@@ -307,15 +319,15 @@ const App = () => {
                     {view === 'INTAKE' && (
                         <>
                             <button className="outline" onClick={() => setView('DASHBOARD')} style={{ margin: '0 2rem 1rem', border: 'none' }}><ChevronLeft /> {t.back}</button>
-                            <ConversationalIntake user={user} onComplete={(ans, sym) => axios.post(`${API_BASE}/intake/finalize`, { userId: user.id, answers: ans, symptom: sym }).then(r => { setResult(r.data); setView('RESULT'); })} />
+                            <ConversationalIntake user={user} onComplete={handleIntakeSubmit} />
                         </>
                     )}
                     {view === 'DISCOVERY' && <DoctorDiscovery user={user} onBack={() => setView('DASHBOARD')} />}
                     {view === 'RESULT' && result && (
-                        <div className="container animate-up" style={{ maxWidth: '600px', textAlign: 'center' }}>
+                        <div className="container animate-up" style={{ maxWidth: '650px', textAlign: 'center' }}>
                             <div className="card" style={{ padding: '4rem' }}>
                                 <div style={{ background: 'var(--routine-bg)', width: '80px', height: '80px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '2rem' }}><CheckCircle color="var(--routine)" size={48} /></div>
-                                <h2>{t.triage_result}</h2><div className="badge moderate-bg" style={{ margin: '1rem 0' }}>{result.triage.severity}</div>
+                                <h2>{t.triage_result}</h2><div className="badge moderate-bg" style={{ margin: '1rem 0' }}>{result.triage.severity} Priority</div>
                                 <div style={{ textAlign: 'left', background: '#f8fafc', padding: '2rem', borderRadius: '20px', border: '1px solid #eef', marginTop: '1rem', fontStyle: 'italic', fontSize: '0.95rem' }}>{result.summary}</div>
                                 <button className="primary" style={{ width: '100%', marginTop: '3rem' }} onClick={() => setView('DASHBOARD')}>{t.home}</button>
                             </div>

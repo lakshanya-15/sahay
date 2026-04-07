@@ -26,14 +26,30 @@ let db;
 
 async function start() {
     db = await open({ filename: path.join(__dirname, '../database.db'), driver: sqlite3.Database });
-    await db.run(`CREATE TABLE IF NOT EXISTS prescriptions (
-        id TEXT PRIMARY KEY,
-        patientId TEXT,
-        doctorId TEXT,
-        notes TEXT,
-        medicines TEXT,
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+
+    // --- Production Ready Schema Cleanup ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, phone TEXT UNIQUE, name TEXT, role TEXT, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS patient_profiles (id TEXT PRIMARY KEY, userId TEXT UNIQUE, age INTEGER, gender TEXT, medicalHistory TEXT);
+        CREATE TABLE IF NOT EXISTS doctor_profiles (id TEXT PRIMARY KEY, userId TEXT UNIQUE, doctorName TEXT, specialty TEXT, hospitalName TEXT, rating REAL, status TEXT DEFAULT 'ONLINE');
+        CREATE TABLE IF NOT EXISTS queue (id TEXT PRIMARY KEY, patientId TEXT, doctorId TEXT, severity TEXT, priority REAL, reasoning TEXT, status TEXT DEFAULT 'WAITING', callRoomId TEXT, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS prescriptions (id TEXT PRIMARY KEY, patientId TEXT, doctorId TEXT, notes TEXT, medicines TEXT, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP);
+    `);
+
+    // --- Production Auto-Seeding (Essential for Demos/Render restarts) ---
+    const doctorCount = await db.get('SELECT COUNT(*) as count FROM doctor_profiles');
+    if (doctorCount.count === 0) {
+        console.log("🌱 Seeding production doctor profiles...");
+        const docUserId = uuidv4();
+        await db.run('INSERT INTO users (id, phone, name, role) VALUES (?, ?, ?, ?)', [docUserId, '9999999999', 'Dr. Ananya Sharma', 'DOCTOR']);
+        await db.run('INSERT INTO doctor_profiles (id, userId, doctorName, specialty, hospitalName, rating, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [uuidv4(), docUserId, 'Dr. Ananya Sharma', 'General Medicine & Triage', 'City Care Rural Clinic', 4.9, 'ONLINE']);
+
+        const docUserId2 = uuidv4();
+        await db.run('INSERT INTO users (id, phone, name, role) VALUES (?, ?, ?, ?)', [docUserId2, '8888888888', 'Dr. Vikram Malhotra', 'Cardiology', 'Apex Heart Institute', 4.8, 'ONLINE']);
+        await db.run('INSERT INTO doctor_profiles (id, userId, doctorName, specialty, hospitalName, rating, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [uuidv4(), docUserId2, 'Dr. Vikram Malhotra', 'Cardiologist', 'Apex Heart Institute', 4.8, 'ONLINE']);
+    }
 
     // --- Auth ---
     app.post('/api/auth/login', async (req, res) => {
@@ -143,9 +159,18 @@ async function start() {
         res.json({ inQueue: true, ...q, position: higher.count + 1, profile: p });
     });
 
-    app.get('/api/health', (req, res) => res.json({ status: 'SAHAY_UP' }));
+    app.get('/api/health', (req, res) => res.json({ status: 'SAHAY_PROD_READY', timestamp: new Date().toISOString() }));
 
-    server.listen(5000, '0.0.0.0', () => console.log('🚀 SAHAY Engine Functional on port 5000'));
+    // --- Global Error Handling ---
+    app.use((err, req, res, next) => {
+        console.error("Prod Error:", err);
+        res.status(500).json({ error: "Service Error" });
+    });
+
+    const PORT = process.env.PORT || 5000;
+    server.listen(PORT, '0.0.0.0', () => console.log(`🚀 SAHAY Engine PROD on ${PORT}`));
 }
+
+io.on('connection', (s) => s.on('set_peer_id', (p) => console.log("Peer ready:", p)));
 
 start();
