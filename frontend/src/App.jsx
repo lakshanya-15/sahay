@@ -213,27 +213,57 @@ const SetupProfile = ({ userId, onComplete }) => {
 
 const DoctorDiscovery = ({ user, q, onBack, onShare }) => {
     const [docs, setDocs] = useState([]);
-    const fetch = () => axios.get(`${API_BASE}/doctors`).then(res => setDocs(res.data));
-    useEffect(() => { fetch(); socket.on('queue_updated', fetch); return () => socket.off('queue_updated'); }, []);
+    const fetchDocs = () => axios.get(`${API_BASE}/doctors`).then(res => setDocs(res.data));
+    useEffect(() => {
+        fetchDocs();
+        socket.on('queue_updated', fetchDocs);
+        return () => socket.off('queue_updated', fetchDocs);
+    }, []);
+
     return (
         <div className="container animate-up">
-            <button className="outline" onClick={onBack} style={{ marginBottom: '3rem' }}><ChevronLeft /> Back to Console</button>
-            <h1 style={{ marginBottom: '3rem' }}>Browse Clinical Specialists</h1>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '2rem' }}>
+            <header style={{ marginBottom: '4rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div><h1 style={{ fontSize: '2.5rem' }}>Specialist <span className="text-gradient">Discovery Hub</span></h1><p style={{ color: 'var(--text-muted)' }}>Real-time priority queues synchronized with CLINIC cloud.</p></div>
+                <button className="outline" onClick={onBack}><ChevronLeft /> BACK TO CONSOLE</button>
+            </header>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '2.5rem' }}>
                 {docs.map(d => (
-                    <div key={d.id} className="card shadow-lg" style={{ borderTop: `10px solid ${d.queueLoad > 3 ? '#ef4444' : 'var(--primary)'}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#f59e0b', fontWeight: '900' }}><Star fill="#f59e0b" size={18} /><span>{d.rating}</span></div>
-                            <span className="badge routine-bg" style={{ fontSize: '0.75rem' }}>{d.specialty}</span>
+                    <div key={d.id} className="card shadow-lg animate-up" style={{ borderTop: `12px solid ${d.queueLoad > 3 ? '#ef4444' : 'var(--primary)'}`, padding: '2.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#f59e0b', fontWeight: '900' }}><Star fill="#f59e0b" size={20} /><span>{d.rating}</span></div>
+                            <div className="badge routine-bg" style={{ fontSize: '0.8rem', background: '#f0fdf4', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Video size={14} /> Teleconsult Active</div>
                         </div>
                         <h3>{d.doctorName}</h3>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}><MapPin size={14} /> {d.address}</p>
-                        <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '20px', margin: '2rem 0' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid #eef2ff', paddingBottom: '0.5rem' }}><strong>Live Urgency Queue</strong> <span style={{ color: d.queueLoad > 4 ? '#ef4444' : 'var(--primary)', fontWeight: '900' }}>Active: {d.queueLoad}</span></div>
-                            <div style={{ display: 'flex', gap: '1rem' }}><span style={{ color: '#ef4444', fontWeight: '800', fontSize: '0.75rem' }}>{d.emergencyCount} EMERGENCY</span><span style={{ color: '#0369a1', fontWeight: '800', fontSize: '0.75rem' }}>{d.queueLoad - d.emergencyCount} ROUTINE</span></div>
+                        <p style={{ color: 'var(--primary)', fontWeight: '800', margin: '0.5rem 0' }}>{d.specialty}</p>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '2rem' }}><MapPin size={14} /> {d.address}</p>
+
+                        <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '20px', marginBottom: '2.5rem', border: '1px solid #eef2ff' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid #eef2ff', paddingBottom: '0.6rem' }}>
+                                <span style={{ fontWeight: '800', fontSize: '0.9rem' }}>Real-time Patient Queue</span>
+                                <span style={{ color: d.queueLoad > 4 ? '#ef4444' : 'var(--primary)', fontWeight: '900' }}>{d.queueLoad} waiting</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><AlertCircle size={12} /> {d.emergencyCount} EMERGENCY</div>
+                                <div style={{ width: '1px', height: '12px', background: '#cbd5e1' }}></div>
+                                <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#0369a1' }}>{d.queueLoad - d.emergencyCount} ROUTINE</div>
+                            </div>
                         </div>
-                        <button className="primary shadow-blue" style={{ width: '100%', background: q?.doctorId === d.id ? '#10b981' : 'var(--primary)' }} onClick={() => onShare(d.id)} disabled={q?.isShared && q?.doctorId !== d.id}>
-                            {q?.doctorId === d.id ? 'REPORT SHARED & QUEUED' : 'SHARE REPORT & JOIN QUEUE'}
+
+                        <div style={{ marginBottom: '2.5rem' }}>
+                            <p style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '0.8rem' }}>AVAILABLE FOR VIDEO CONSULT</p>
+                            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                {JSON.parse(d.slots || '[]').map(s => <span key={s} style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '800' }}>{s}</span>)}
+                            </div>
+                        </div>
+
+                        <button
+                            className="primary shadow-blue"
+                            style={{ width: '100%', padding: '1.25rem', background: q?.doctorId === d.id ? '#10b981' : 'var(--primary)' }}
+                            onClick={() => onShare(d.id)}
+                            disabled={q?.isShared && q?.doctorId !== d.id}
+                        >
+                            {q?.doctorId === d.id ? 'REPORT SHARED & QUEUED' : 'SHARE AI REPORT & BOOK CONSULT'} <Share2 size={18} style={{ marginLeft: '0.5rem' }} />
                         </button>
                     </div>
                 ))}
