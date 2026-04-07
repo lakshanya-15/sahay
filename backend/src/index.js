@@ -65,6 +65,20 @@ async function start() {
         res.json({ success: true });
     });
 
+    const QUESTION_BANK = {
+        age: "How old are you?", gender: "What is your gender?", pain_level: "Rate your pain (1-10)",
+        pain_spread: "Is the pain spreading?", sweating: "Any sweating/nausea?"
+    };
+
+    app.post('/api/intake/next-question', (req, res) => {
+        const { answers, symptom } = req.body;
+        if (!symptom) return res.json({ isComplete: false, nextQuestion: { id: 'mainSymptom', label: 'Describe symptoms.' } });
+        const flow = ['age', 'gender', 'pain_level'];
+        const nextId = flow.find(k => !Object.keys(answers).includes(k));
+        if (!nextId) return res.json({ isComplete: true });
+        res.json({ isComplete: false, nextQuestion: { id: nextId, label: QUESTION_BANK[nextId] } });
+    });
+
     // --- Complex AI Triage & Report Creation (Private by Default) ---
     app.post('/api/intake/finalize', async (req, res) => {
         const { userId, answers, symptom } = req.body;
