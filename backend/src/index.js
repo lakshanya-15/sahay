@@ -52,7 +52,10 @@ async function start() {
         if (!user) {
             user = { id: uuidv4(), phone, name, role };
             await db.run('INSERT INTO users (id, phone, name, role) VALUES (?, ?, ?, ?)', [user.id, phone, name, role]);
-            if (role === 'DOCTOR') await db.run('INSERT INTO doctor_profiles (id, userId) VALUES (?, ?)', [uuidv4(), user.id]);
+            if (role === 'DOCTOR') {
+                await db.run('INSERT INTO doctor_profiles (id, userId, specialty, status, rating, contact, address, slots) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [uuidv4(), user.id, 'General Physician', 'ONLINE', 4.5, phone, 'Clinic Hub', '["09:00 AM", "12:00 PM"]']);
+            }
         }
         res.json({ token: 'mock-token', user });
     });
@@ -61,11 +64,12 @@ async function start() {
         try {
             const { userId, age, gender, address, height, weight, bloodGroup, history } = req.body;
             const bmi = weight / ((height / 100) * (height / 100));
-            const pId = uuidv4();
-            await db.run('INSERT OR REPLACE INTO patient_profiles (id, userId, age, gender, address, height, weight, bloodGroup, bmi, history) VALUES ((SELECT id FROM patient_profiles WHERE userId=?), ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [userId, userId, age, gender, address, height, weight, bloodGroup, bmi, history || 'None']);
+            let p = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', userId);
+            const pId = p ? p.id : uuidv4();
+            await db.run('INSERT OR REPLACE INTO patient_profiles (id, userId, age, gender, address, height, weight, bloodGroup, bmi, history) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [pId, userId, age, gender, address, height, weight, bloodGroup, bmi, history || 'None']);
             res.json({ success: true });
-        } catch (e) { res.status(500).json({ error: e.message }); }
+        } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
     });
 
     const QUESTION_BANK = {
