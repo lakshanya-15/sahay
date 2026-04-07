@@ -37,8 +37,8 @@ async function start() {
 
     // --- Seeding Doctors ---
     const docs = [
-        { u: { id: 'doc-1', p: '9999999999', n: 'Dr. Ananya Sharma', r: 'DOCTOR' }, d: { s: 'Cardiology Specialist', st: 'ONLINE', ra: 4.9, c: '+91 9988776655', a: 'Fortis Hospital', sl: '["09:00 AM", "11:30 AM"]' } },
-        { u: { id: 'doc-2', p: '8888888888', n: 'Dr. Vikram Malhotra', r: 'DOCTOR' }, d: { s: 'Internal Medicine', st: 'ONLINE', ra: 4.8, c: '+91 8877665544', a: 'Max Super Specialty', sl: '["10:00 AM", "01:00 PM"]' } }
+        { u: { id: 'doc-1', p: '9999999999', n: 'Dr. Ananya Sharma', r: 'DOCTOR' }, d: { s: 'Cardiology Specialist', st: 'ONLINE', ra: 4.9, c: '+91 9988776655', a: 'Fortis Hospital, Mohali', sl: '["09:00 AM", "11:30 AM", "02:00 PM"]' } },
+        { u: { id: 'doc-2', p: '8888888888', n: 'Dr. Vikram Malhotra', r: 'DOCTOR' }, d: { s: 'Internal Medicine & GP', st: 'ONLINE', ra: 4.8, c: '+91 8877665544', a: 'Max Super Specialty, Delhi', sl: '["10:00 AM", "01:00 PM", "05:00 PM"]' } }
     ];
     for (const doc of docs) {
         await db.run('INSERT OR IGNORE INTO users (id, phone, name, role) VALUES (?, ?, ?, ?)', [doc.u.id, doc.u.p, doc.u.n, doc.u.r]);
@@ -58,69 +58,71 @@ async function start() {
     });
 
     app.post('/api/patient/update-profile', async (req, res) => {
-        const { userId, age, gender, address, height, weight, bloodGroup, history } = req.body;
-        const bmi = weight / ((height / 100) * (height / 100));
-        await db.run('INSERT OR REPLACE INTO patient_profiles (id, userId, age, gender, address, height, weight, bloodGroup, bmi, history) VALUES ((SELECT id FROM patient_profiles WHERE userId=?), ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [userId, userId, age, gender, address, height, weight, bloodGroup, bmi, history]);
-        res.json({ success: true });
+        try {
+            const { userId, age, gender, address, height, weight, bloodGroup, history } = req.body;
+            const bmi = weight / ((height / 100) * (height / 100));
+            const pId = uuidv4();
+            await db.run('INSERT OR REPLACE INTO patient_profiles (id, userId, age, gender, address, height, weight, bloodGroup, bmi, history) VALUES ((SELECT id FROM patient_profiles WHERE userId=?), ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [userId, userId, age, gender, address, height, weight, bloodGroup, bmi, history || 'None']);
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
     const QUESTION_BANK = {
-        age: "How old are you?", gender: "What is your gender?", pain_level: "Rate your pain (1-10)",
-        pain_spread: "Is the pain spreading?", sweating: "Any sweating/nausea?"
+        age: "Confirming age for clinical reporting...", gender: "Confirm gender...", pain_level: "Intensity of condition (1-10)?",
+        pain_spread: "Does it feel spreading?", sweating: "Experiencing sweating/nausea?"
     };
 
     app.post('/api/intake/next-question', (req, res) => {
         const { answers, symptom } = req.body;
-        if (!symptom) return res.json({ isComplete: false, nextQuestion: { id: 'mainSymptom', label: 'Describe symptoms.' } });
+        if (!symptom) return res.json({ isComplete: false, nextQuestion: { id: 'mainSymptom', label: 'Describe the primary symptom or health issue.' } });
         const flow = ['age', 'gender', 'pain_level'];
         const nextId = flow.find(k => !Object.keys(answers).includes(k));
         if (!nextId) return res.json({ isComplete: true });
         res.json({ isComplete: false, nextQuestion: { id: nextId, label: QUESTION_BANK[nextId] } });
     });
 
-    // --- Complex AI Triage & Report Creation (Private by Default) ---
     app.post('/api/intake/finalize', async (req, res) => {
-        const { userId, answers, symptom } = req.body;
-        const p = await db.get('SELECT * FROM patient_profiles WHERE userId = ?', userId);
+        try {
+            const { userId, answers, symptom } = req.body;
+            const p = await db.get('SELECT * FROM patient_profiles WHERE userId = ?', userId);
+            if (!p) return res.status(404).json({ error: "Profile missing" });
 
-        // Context-Aware Triage using past history + current symptoms
-        const triage = TriageService.performTriage({
-            age: p?.age || 25,
-            gender: p?.gender || 'Male',
-            history: [p?.history || ''],
-            symptoms: [symptom]
-        });
+            const triage = TriageService.performTriage({
+                age: p.age || 25,
+                gender: p.gender || 'Male',
+                history: [p.history || ''],
+                symptoms: [symptom]
+            });
 
-        await db.run('DELETE FROM queue WHERE patientId = ?', p?.id);
-        const qId = uuidv4();
-        await db.run('INSERT INTO queue (id, patientId, doctorId, severity, priority, reasoning, status, callRoomId, isShared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [qId, p?.id, null, triage.severity, triage.score, JSON.stringify({ summary: triage.clinicalSummary, flags: triage.flags || [] }), 'DRAFT', `room-${qId.slice(0, 8)}`, 0]);
+            await db.run('DELETE FROM queue WHERE patientId = ?', p.id);
+            const qId = uuidv4();
+            await db.run('INSERT INTO queue (id, patientId, doctorId, severity, priority, reasoning, status, callRoomId, isShared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [qId, p.id, null, triage.severity, triage.score, JSON.stringify({ summary: triage.clinicalSummary, flags: triage.flags || [] }), 'DRAFT', `room-${qId.slice(0, 8)}`, 0]);
 
-        res.json({ success: true, triage });
+            io.emit('queue_updated');
+            res.json({ success: true, triage });
+        } catch (e) {
+            console.error(e);
+            res.status(500).json({ error: "Clinical engine failure: " + e.message });
+        }
     });
 
-    // --- Exclusive Sharing & Priority Queue Allocation ---
     app.post('/api/book/share-report', async (req, res) => {
         const { userId, doctorId } = req.body;
         const p = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', userId);
-
-        // Exclusive Share Lock: Only one active sharing allowed
         const active = await db.get('SELECT id FROM queue WHERE patientId = ? AND isShared = 1 AND status != "COMPLETED"', p?.id);
-        if (active) return res.status(400).json({ error: "Report is already shared with another doctor. Revoke first." });
-
+        if (active) return res.status(400).json({ error: "Active sharing alive. Revoke first." });
         await db.run('UPDATE queue SET doctorId = ?, isShared = 1, status = "WAITING" WHERE patientId = ?', [doctorId, p?.id]);
         io.emit('queue_updated'); res.json({ success: true });
     });
 
-    // --- Real-time Queue Load Calculation for Doctors ---
     app.get('/api/doctors', async (req, res) => {
         const doctors = await db.all(`SELECT dp.*, u.name as doctorName FROM doctor_profiles dp JOIN users u ON dp.userId = u.id`);
         for (let d of doctors) {
             const qLoad = await db.get('SELECT count(*) as count FROM queue WHERE doctorId = ? AND status = "WAITING"', d.id);
             const highPri = await db.get('SELECT count(*) as count FROM queue WHERE doctorId = ? AND severity = "EMERGENCY" AND status = "WAITING"', d.id);
-            d.queueLoad = qLoad.count;
-            d.emergencyCount = highPri.count;
+            d.queueLoad = qLoad.count; d.emergencyCount = highPri.count;
         }
         res.json(doctors);
     });
@@ -154,9 +156,8 @@ async function start() {
         io.emit('queue_updated'); res.json({ success: true });
     });
 
-    server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`🚀 Engine` | process.pid));
+    server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`🚀 Engine Started on Port ${process.env.PORT || 5000}`));
 }
 
 start();
-const io_connect = (s) => s.on('set_peer_id', (p) => console.log("Peer:", p));
-io.on('connection', io_connect);
+io.on('connection', (s) => console.log("Socket Connection established."));
