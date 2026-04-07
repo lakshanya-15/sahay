@@ -16,8 +16,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-const PORT = 5000;
-const SECRET = 'full_functionality_sahay_secret';
+const PORT = process.env.PORT || 5000;
+const SECRET = process.env.JWT_SECRET || 'full_functionality_sahay_secret';
 
 app.use(cors());
 app.use(express.json());
