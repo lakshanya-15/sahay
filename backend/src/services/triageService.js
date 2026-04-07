@@ -22,26 +22,26 @@ class TriageService {
     // 🔴 EMERGENCY BRANCH (Immediate Action Required)
     if (isChestPain && (answers.pain_spread === true || answers.sweating === true || age > 45)) {
       severity = "EMERGENCY";
-      reasoning = "🔴 CRITICAL ALERT: High probability of acute myocardial infarction (Cardiac Event). Factors: Chest pain radiation, diaphoresis (sweating), and age risk factor.";
+      reasoning = "🔴 CRITICAL: Symptoms suggest a high risk of heart-related issues. Factors: spreading chest pain, heavy sweating, and age risk. Needs immediate hospital care.";
       confidence = 95;
     } else if (isBreathless && (answers.at_rest === true || answers.breath_onset === 'Suddenly')) {
       severity = "EMERGENCY";
-      reasoning = "🔴 CRITICAL ALERT: Severe respiratory failure/Acute pulmonary embolism suspected. Sudden onset/dyspnea at rest recorded.";
+      reasoning = "🔴 CRITICAL: Sudden difficulty breathing detected. This could be a serious lung or breathing blockage. Needs immediate oxygen/emergency care.";
       confidence = 92;
     } else if (isFever && age < 3 && answers.temp_level === true) {
       severity = "EMERGENCY";
-      reasoning = "🔴 CRITICAL ALERT: Pediatric Sepsis Risk. High fever in infants/toddlers requires immediate clinical intervention.";
+      reasoning = "🔴 CRITICAL: Very high fever in an infant/toddler can be dangerous. High risk of systemic infection. See a doctor immediately.";
       confidence = 88;
     }
 
     // 🟠 MODERATE BRANCH (Urgent care within hours)
     else if (isFever && (answers.fever_duration > 3 || answers.respiratory_issues === true)) {
       severity = "MODERATE";
-      reasoning = "🟠 URGENT: Persistent febrile illness with potential secondary pulmonary involvement. Priority clinical review indicated.";
+      reasoning = "🟠 URGENT: Long-lasting fever with breathing issues detected. Potential lung infection (Pneumonia) risk. Should see a doctor within hours.";
       confidence = 82;
     } else if (age > 65 || age < 5) {
       severity = "MODERATE";
-      reasoning = "🟠 URGENT: Vulnerable population protocols active. Symptoms require early intervention to prevent acute escalation.";
+      reasoning = "🟠 URGENT: High-risk age group with concerning symptoms. Early check-up will prevent things from getting worse.";
       confidence = 90;
     }
 
