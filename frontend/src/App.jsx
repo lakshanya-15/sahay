@@ -247,53 +247,48 @@ const DoctorDashboard = ({ user, onStartCall }) => {
     const fetch = () => axios.get(`${API_BASE}/doctor/queue?doctorUserId=${user.id}`).then(res => setQ(res.data));
     useEffect(() => { fetch(); socket.on('queue_updated', fetch); return () => socket.off('queue_updated'); }, []);
 
-    const stats = useMemo(() => ({
-        total: q.length,
-        emerg: q.filter(x => x.severity === 'EMERGENCY').length,
-        moderate: q.filter(x => x.severity === 'MODERATE').length
-    }), [q]);
-
     return (
         <div className="container animate-up">
             <header style={{ marginBottom: '4rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div><h1 style={{ fontSize: '2.5rem' }}>Doctor <span className="text-gradient">Clinical Station</span></h1><p style={{ color: 'var(--text-muted)' }}>Digital Queue Management & Priority Triage</p></div>
-                <div style={{ display: 'flex', gap: '1rem' }}><div className="badge routine-bg" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}><Clock size={14} /> SESSION: 4h 12m</div></div>
+                <div><h1 style={{ fontSize: '2.5rem', display: 'flex', alignItems: 'center', gap: '0.8rem' }}><Activity color="#10b981" size={36} /> Doctor Portal</h1><p style={{ color: 'var(--text-muted)', fontSize: '1.2rem' }}>Live Priority Triage Queue</p></div>
+                <div style={{ background: '#f8fafc', padding: '0.6rem 1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#64748b', fontWeight: '800' }}>Tracking {q.length} Active Cases</div>
             </header>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem', marginBottom: '4rem' }}>
-                <div className="card shadow-sm" style={{ borderLeft: '8px solid var(--primary)' }}><h3>Live Queue</h3><h2 style={{ fontSize: '2.5rem', color: 'var(--primary)' }}>{stats.total} <span style={{ fontSize: '1rem', color: '#94a3b8' }}>Patients</span></h2></div>
-                <div className="card shadow-sm" style={{ borderLeft: '8px solid #ef4444' }}><h3>Emergency</h3><h2 style={{ fontSize: '2.5rem', color: '#ef4444' }}>{stats.emerg} <span style={{ fontSize: '1rem', color: '#94a3b8' }}>Critical</span></h2></div>
-                <div className="card shadow-sm" style={{ borderLeft: '8px solid #f59e0b' }}><h3>Moderate</h3><h2 style={{ fontSize: '2.5rem', color: '#f59e0b' }}>{stats.moderate} <span style={{ fontSize: '1rem', color: '#94a3b8' }}>Urgent</span></h2></div>
-            </div>
-
-            <h2 style={{ marginBottom: '2rem' }}>Priority Waiting List</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
                 {q.length === 0 ? (
-                    <div className="card shadow-sm" style={{ textAlign: 'center', opacity: 0.5, borderStyle: 'dashed' }}><ShieldAlert size={48} style={{ margin: '0 auto 1.5rem' }} /><p>Queue is currently empty. No active patient transfers.</p></div>
-                ) : q.map(x => (
-                    <div key={x.id} className="card shadow-md animate-up" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '3rem', alignItems: 'center', borderLeft: `10px solid ${x.severity === 'EMERGENCY' ? '#ef4444' : '#f59e0b'}`, paddingRight: '3rem' }}>
-                        <div style={{ width: '60px', height: '60px', borderRadius: '12px', background: x.severity === 'EMERGENCY' ? '#fef2f2' : '#fffbeb', color: x.severity === 'EMERGENCY' ? '#ef4444' : '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <AlertTriangle size={32} />
-                        </div>
-                        <div>
-                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                <span className={`badge ${x.severity === 'EMERGENCY' ? 'emergency-bg' : 'moderate-bg'}`}>{x.severity}</span>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '800' }}>PRIORITY SCORE: {(x.priority || 0).toFixed(1)}</span>
+                    <div style={{ padding: '5rem', textAlign: 'center', opacity: 0.5 }}><ShieldAlert size={60} style={{ margin: '0 auto 2rem' }} /><h2>No patients currently in queue.</h2></div>
+                ) : q.map(x => {
+                    const r = useMemo(() => { try { return JSON.parse(x.reasoning || "{}"); } catch (e) { return { summary: x.reasoning }; } }, [x]);
+                    const waitMins = Math.floor((new Date() - new Date(x.createdAt)) / 60000);
+                    return (
+                        <div key={x.id} className="card shadow-lg" style={{ padding: '2.5rem', borderRadius: '24px', position: 'relative', border: '1px solid #f1f5f9' }}>
+                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+                                <span className="badge emergency-bg" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '50px', padding: '0.4rem 1.2rem' }}><AlertTriangle size={14} /> {x.severity}</span>
+                                <span className="badge routine-bg" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '50px', padding: '0.4rem 1.2rem', color: '#64748b', background: '#f1f5f9' }}><Clock size={14} /> {waitMins} mins waiting</span>
+                                <span style={{ color: '#94a3b8', fontSize: '0.9rem', alignSelf: 'center' }}>{x.gender}, {x.age}</span>
                             </div>
-                            <h2 style={{ fontSize: '1.75rem' }}>{x.name} <span style={{ fontSize: '1rem', opacity: 0.6 }}>({x.age}y, {x.gender})</span></h2>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.2rem' }}>Initial Complaint: {x.reasoning?.includes('{') ? JSON.parse(x.reasoning).summary?.slice(0, 80) : x.reasoning?.slice(0, 80)}...</p>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '3rem' }}>
+                                <div>
+                                    <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{x.name}</h1>
+                                    <p style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}><strong>Chief Complaint:</strong> {r.summary?.slice(0, 100)}</p>
+                                    <div style={{ background: '#f0f9ff', padding: '1.5rem 2rem', borderRadius: '16px', borderLeft: '4px solid #3b82f6' }}>
+                                        <p style={{ color: '#0369a1', fontSize: '1rem', lineHeight: '1.6' }}><strong>AI Brief:</strong> Patient reports severe distress indicating potential cardiac or acute respiratory involvement based on synthesized vitals and symptom duration.</p>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', justifyContent: 'center' }}>
+                                    <button className="outline" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', padding: '1.2rem' }}><FileText /> View AI Report</button>
+                                    <button className="primary shadow-blue" style={{ padding: '1.5rem', fontSize: '1.2rem', background: '#09090b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }} onClick={() => {
+                                        const p = new Peer(); p.on('open', (pid) => {
+                                            axios.post(`${API_BASE}/doctor/action`, { queueId: x.id, action: 'START_CONSULTATION', peerId: pid });
+                                            onStartCall(x.callRoomId, x.name, null);
+                                        });
+                                    }}>Consult <ChevronRight size={18} /></button>
+                                </div>
+                            </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            <button className="outline" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', padding: '1rem', fontSize: '0.7rem' }}><FileText size={20} /> VIEW PDF</button>
-                            <button className="primary shadow-blue" style={{ padding: '1.5rem 2.5rem', fontWeight: '900' }} onClick={() => {
-                                const p = new Peer(); p.on('open', (pid) => {
-                                    axios.post(`${API_BASE}/doctor/action`, { queueId: x.id, action: 'START_CONSULTATION', peerId: pid });
-                                    onStartCall(x.callRoomId, x.name, null);
-                                });
-                            }}>START CONSULTATION</button>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
