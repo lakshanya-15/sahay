@@ -50,6 +50,7 @@ class TriageService {
     const historyRisk = history.some(h => h && h.length > 0) ? 15 : 0;
     const score = severityWeight + historyRisk + (age / 100) * 5;
 
+    const pedsRisk = age < 5;
     const flags = [];
     if (score > 80) flags.push("CRITICAL_THRESHOLD");
     if (pedsRisk) flags.push("PEDIATRIC_WATCH");
