@@ -8,8 +8,8 @@ import {
     Thermometer, Wind, Zap, Share2, ClipboardList, TrendingUp, X, MicOff, VideoOff, PhoneOff
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5000/api';
-const socket = io('http://localhost:5000');
+const API_BASE = 'https://sahay-6doo.onrender.com/api';
+const socket = io('https://sahay-6doo.onrender.com');
 
 // --- Auth Context ---
 
