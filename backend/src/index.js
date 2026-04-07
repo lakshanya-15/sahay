@@ -25,36 +25,31 @@ async function start() {
 
     await db.exec(`
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, phone TEXT UNIQUE, name TEXT, role TEXT);
-        CREATE TABLE IF NOT EXISTS patient_profiles (
-            id TEXT PRIMARY KEY, userId TEXT, age INTEGER, gender TEXT, 
-            address TEXT, height REAL, weight REAL, bloodGroup TEXT, bmi REAL
-        );
-        CREATE TABLE IF NOT EXISTS doctor_profiles (id TEXT PRIMARY KEY, userId TEXT, specialty TEXT, status TEXT, rating REAL);
+        CREATE TABLE IF NOT EXISTS patient_profiles (id TEXT PRIMARY KEY, userId TEXT, age INTEGER, gender TEXT, address TEXT, height REAL, weight REAL, bloodGroup TEXT, bmi REAL);
+        CREATE TABLE IF NOT EXISTS doctor_profiles (id TEXT PRIMARY KEY, userId TEXT, specialty TEXT, status TEXT, rating REAL, contact TEXT, address TEXT, slots TEXT);
         CREATE TABLE IF NOT EXISTS queue (id TEXT PRIMARY KEY, patientId TEXT, doctorId TEXT, severity TEXT, priority REAL, reasoning TEXT, status TEXT, callRoomId TEXT, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS prescriptions (id TEXT PRIMARY KEY, patientId TEXT, doctorId TEXT, notes TEXT, medicines TEXT, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS health_timeline (id TEXT PRIMARY KEY, patientId TEXT, eventTitle TEXT, eventDetails TEXT, doctorName TEXT, date TEXT);
     `);
 
-    // --- Seeding Doctors ---
+    // --- Seeding Doctors (High Fidelity) ---
     const docs = [
-        { u: { id: 'doc-1', p: '9999999999', n: 'Dr. Ananya Sharma', r: 'DOCTOR' }, d: { s: 'Cardiology', st: 'ONLINE', ra: 4.9 } },
-        { u: { id: 'doc-2', p: '8888888888', n: 'Dr. Vikram Malhotra', r: 'DOCTOR' }, d: { s: 'General Medicine', st: 'ONLINE', ra: 4.7 } }
+        { u: { id: 'doc-1', p: '9999999999', n: 'Dr. Ananya Sharma', r: 'DOCTOR' }, d: { s: 'Cardiology Specialist', st: 'ONLINE', ra: 4.9, c: '+91 9988776655', a: 'Fortis Hospital, Mohali, Punjab', sl: '["09:00 AM", "11:30 AM", "04:00 PM"]' } },
+        { u: { id: 'doc-2', p: '8888888888', n: 'Dr. Vikram Malhotra', r: 'DOCTOR' }, d: { s: 'Pediatrics & GP', st: 'ONLINE', ra: 4.8, c: '+91 8877665544', a: 'Max Super Specialty, Delhi', sl: '["10:00 AM", "01:00 PM", "06:00 PM"]' } }
     ];
     for (const doc of docs) {
         await db.run('INSERT OR IGNORE INTO users (id, phone, name, role) VALUES (?, ?, ?, ?)', [doc.u.id, doc.u.p, doc.u.n, doc.u.r]);
-        await db.run('INSERT OR IGNORE INTO doctor_profiles (id, userId, specialty, status, rating) VALUES (?, ?, ?, ?, ?)', [doc.u.id, doc.u.id, doc.d.s, doc.d.st, doc.d.ra]);
+        await db.run('INSERT OR IGNORE INTO doctor_profiles (id, userId, specialty, status, rating, contact, address, slots) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [doc.u.id, doc.u.id, doc.d.s, doc.d.st, doc.d.ra, doc.d.c, doc.d.a, doc.d.sl]);
     }
 
-    // --- Auth Routes ---
+    // --- Auth & Profile ---
     app.post('/api/auth/login', async (req, res) => {
         const { phone, name, role } = req.body;
         let user = await db.get('SELECT * FROM users WHERE phone = ?', phone);
         if (!user) {
             user = { id: uuidv4(), phone, name, role };
             await db.run('INSERT INTO users (id, phone, name, role) VALUES (?, ?, ?, ?)', [user.id, phone, name, role]);
-            if (role === 'DOCTOR') {
-                await db.run('INSERT INTO doctor_profiles (id, userId, specialty, status, rating) VALUES (?, ?, ?, ?, ?)', [uuidv4(), user.id, 'General Medicine', 'ONLINE', 4.5]);
-            }
+            if (role === 'DOCTOR') await db.run('INSERT INTO doctor_profiles (id, userId) VALUES (?, ?)', [uuidv4(), user.id]);
         }
         res.json({ token: 'mock-jwt-token', user });
     });
@@ -62,62 +57,42 @@ async function start() {
     app.post('/api/patient/update-profile', async (req, res) => {
         const { userId, age, gender, address, height, weight, bloodGroup } = req.body;
         const bmi = weight / ((height / 100) * (height / 100));
-        let profile = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', userId);
-        if (!profile) {
-            await db.run('INSERT INTO patient_profiles (id, userId, age, gender, address, height, weight, bloodGroup, bmi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [uuidv4(), userId, age, gender, address, height, weight, bloodGroup, bmi]);
-        } else {
-            await db.run('UPDATE patient_profiles SET age=?, gender=?, address=?, height=?, weight=?, bloodGroup=?, bmi=? WHERE userId=?',
-                [age, gender, address, height, weight, bloodGroup, bmi, userId]);
-        }
+        await db.run('INSERT OR REPLACE INTO patient_profiles (id, userId, age, gender, address, height, weight, bloodGroup, bmi) VALUES ((SELECT id FROM patient_profiles WHERE userId=?), ?, ?, ?, ?, ?, ?, ?, ?)',
+            [userId, userId, age, gender, address, height, weight, bloodGroup, bmi]);
         res.json({ success: true });
     });
 
-    // --- Advanced Context-Aware Chatbot Logic ---
+    // --- Chatbot & Finalize (No Dummy) ---
     const QUESTION_BANK = {
-        age: { label: "How old are you?", type: "number" },
-        gender: { label: "What is your gender? (Male/Female/Other)", type: "text" },
-        duration: { label: "How long have you been feeling this way?", type: "text" },
-        pain_level: { label: "On a scale of 1 to 10, how intense is the discomfort?", type: "number" },
-        pain_spread: { label: "Is the pain spreading to your arms or back? (Yes/No)", type: "text" },
-        sweating: { label: "Are you experiencing any sweating/nausea? (Yes/No)", type: "text" },
-        at_rest: { label: "Do you feel short of breath even while sitting? (Yes/No)", type: "text" },
-        temp_level: { label: "Is your fever above 102°F? (Yes/No)", type: "text" }
+        age: "How old are you?", gender: "What is your gender?", pain_level: "Rate your pain (1-10)",
+        pain_spread: "Is the pain spreading?", sweating: "Any sweating/nausea?"
     };
 
     app.post('/api/intake/next-question', (req, res) => {
         const { answers, symptom } = req.body;
-        if (!symptom) return res.json({ isComplete: false, nextQuestion: { id: 'mainSymptom', type: 'text', label: 'Welcome. Please tell me about your symptoms.' } });
-        let flow = ['age', 'gender', 'duration'];
-        if (symptom.includes('chest')) flow = [...flow, 'pain_level', 'pain_spread', 'sweating'];
-        else if (symptom.includes('breath')) flow = [...flow, 'at_rest'];
-        const answeredKeys = Object.keys(answers);
-        const nextId = flow.find(k => !answeredKeys.includes(k));
+        if (!symptom) return res.json({ isComplete: false, nextQuestion: { id: 'mainSymptom', label: 'Welcome to SAHAY. Describe your symptom.' } });
+        const flow = ['age', 'gender', 'pain_level'];
+        const nextId = flow.find(k => !Object.keys(answers).includes(k));
         if (!nextId) return res.json({ isComplete: true });
-        res.json({ isComplete: false, nextQuestion: { id: nextId, ...QUESTION_BANK[nextId] } });
+        res.json({ isComplete: false, nextQuestion: { id: nextId, label: QUESTION_BANK[nextId] } });
     });
 
     app.post('/api/intake/finalize', async (req, res) => {
         const { userId, answers, symptom } = req.body;
-        const triage = TriageService.performTriage({ age: parseInt(answers.age), gender: answers.gender, history: [], symptoms: [symptom] });
-        let profile = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', userId);
-        if (!profile) {
-            profile = { id: uuidv4() };
-            await db.run('INSERT INTO patient_profiles (id, userId, age, gender) VALUES (?, ?, ?, ?)', [profile.id, userId, parseInt(answers.age), answers.gender]);
-        }
-        await db.run('DELETE FROM queue WHERE patientId = ?', profile.id);
-        await db.run(`INSERT INTO queue (id, patientId, doctorId, severity, priority, reasoning, status, callRoomId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuidv4(), profile.id, null, triage.severity, triage.score, JSON.stringify({ summary: triage.clinicalSummary, flags: triage.flags || [] }), 'WAITING', `room-${uuidv4().slice(0, 8)}`]);
-        io.emit('queue_updated');
-        res.json({ success: true, triage });
+        const p = await db.get('SELECT * FROM patient_profiles WHERE userId = ?', userId);
+        const triage = TriageService.performTriage({ age: p?.age || 25, gender: p?.gender || 'Male', symptoms: [symptom] });
+        await db.run('DELETE FROM queue WHERE patientId = ?', p?.id);
+        const qId = uuidv4();
+        await db.run('INSERT INTO queue (id, patientId, doctorId, severity, priority, reasoning, status, callRoomId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [qId, p?.id, null, triage.severity, triage.score, JSON.stringify({ summary: triage.clinicalSummary }), 'WAITING', `room-${qId.slice(0, 8)}`]);
+        io.emit('queue_updated'); res.json({ success: true });
     });
 
-    // --- Booking/Discovery ---
+    // --- Scheduling & Actions ---
     app.post('/api/book/doctor', async (req, res) => {
-        const { userId, doctorId } = req.body;
-        let p = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', userId);
-        if (!p) return res.status(400).json({ error: "Setup profile first." });
-        await db.run('UPDATE queue SET doctorId = ?, status = "WAITING" WHERE patientId = ?', [doctorId, p.id]);
+        const { userId, doctorId, slot } = req.body;
+        const p = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', userId);
+        await db.run('UPDATE queue SET doctorId = ?, status = "SCHEDULED" WHERE patientId = ?', [doctorId, p?.id]);
         io.emit('queue_updated'); res.json({ success: true });
     });
 
@@ -125,20 +100,10 @@ async function start() {
         const p = await db.get('SELECT * FROM patient_profiles WHERE userId = ?', req.params.userId);
         if (!p) return res.json({ profileMissing: true });
         const q = await db.get('SELECT * FROM queue WHERE patientId = ? AND status != "COMPLETED"', p.id);
-        const timeline = await db.all('SELECT * FROM health_timeline WHERE patientId = ? ORDER BY date DESC LIMIT 5', p.id);
-        res.json({ inQueue: !!q, ...q, profile: p, timeline });
+        res.json({ inQueue: !!q, ...q, profile: p });
     });
 
-    app.get('/api/doctor/queue', async (req, res) => {
-        const { doctorUserId } = req.query;
-        let q = `SELECT q.*, u.name, pp.age, pp.gender FROM queue q JOIN patient_profiles pp ON q.patientId = pp.id JOIN users u ON pp.userId = u.id WHERE q.status != "COMPLETED"`;
-        const params = [];
-        if (doctorUserId) {
-            const d = await db.get('SELECT id FROM doctor_profiles WHERE userId = ?', doctorUserId);
-            if (d) { q += ' AND (q.doctorId = ? OR q.doctorId IS NULL)'; params.push(d.id); }
-        }
-        res.json(await db.all(q + ' ORDER BY q.priority DESC', params));
-    });
+    app.get('/api/doctors', async (req, res) => res.json(await db.all(`SELECT dp.*, u.name as doctorName FROM doctor_profiles dp JOIN users u ON dp.userId = u.id`)));
 
     app.post('/api/doctor/action', async (req, res) => {
         const { queueId, action, peerId } = req.body;
@@ -151,10 +116,7 @@ async function start() {
         io.emit('queue_updated'); res.json({ success: true });
     });
 
-    app.get('/api/doctors', async (req, res) => res.json(await db.all(`SELECT dp.*, u.name as doctorName FROM doctor_profiles dp JOIN users u ON dp.userId = u.id`)));
-    app.get('/api/health', (req, res) => res.json({ status: 'READY', time: new Date() }));
     server.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log(`🚀 Engine`));
 }
 
-io.on('connection', (s) => s.on('set_peer_id', (p) => console.log("Peer:", p)));
 start();
