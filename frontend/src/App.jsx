@@ -172,7 +172,9 @@ const PatientDashboard = ({ user, setView, onStartCall }) => {
         <div className="container animate-up">
             <h1 className="text-gradient">Hello, {user.name}</h1>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', margin: '2.5rem 0' }}>
-                <HealthMetricStat icon={Droplet} label="Blood" value="A+" color="#ef4444" /><HealthMetricStat icon={TrendingUp} label="Vital" value="98%" color="#10b981" /><HealthMetricStat icon={Clock} label="Wait" value="10m" color="#f59e0b" />
+                <HealthMetricStat icon={User} label="Age" value={q?.profile?.age || '--'} color="var(--primary)" />
+                <HealthMetricStat icon={TrendingUp} label="Risk Score" value={q?.priority ? `${Math.round(q.priority)}%` : '--'} color={q?.severity === 'EMERGENCY' ? '#ef4444' : '#10b981'} />
+                <HealthMetricStat icon={Clock} label="Est. Wait" value={q?.position ? `${q.position * 10}m` : '--'} color="#f59e0b" />
             </div>
             <div className="dashboard-grid">
                 <div className="card" style={{ background: '#f1f8f5', display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '3rem' }}>

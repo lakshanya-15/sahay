@@ -113,12 +113,12 @@ async function start() {
     });
 
     app.get('/api/patient/status/:userId', async (req, res) => {
-        const p = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', req.params.userId);
+        const p = await db.get('SELECT * FROM patient_profiles WHERE userId = ?', req.params.userId);
         if (!p) return res.json({ inQueue: false });
         const q = await db.get('SELECT * FROM queue WHERE patientId = ? AND status != "COMPLETED"', p.id);
-        if (!q) return res.json({ inQueue: false });
+        if (!q) return res.json({ inQueue: false, profile: p });
         const higher = await db.get('SELECT COUNT(*) as count FROM queue WHERE priority > ? AND status = "WAITING"', [q.priority]);
-        res.json({ inQueue: true, ...q, position: higher.count + 1 });
+        res.json({ inQueue: true, ...q, position: higher.count + 1, profile: p });
     });
 
     app.get('/api/health', (req, res) => res.json({ status: 'SAHAY_UP' }));
