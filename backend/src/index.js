@@ -55,15 +55,42 @@ async function start() {
         res.json({ token: 'mock-jwt-token', user });
     });
 
-    // --- Intake/Triage ---
+    // --- Advanced Context-Aware Chatbot Logic ---
+    const QUESTION_BANK = {
+        age: { label: "How old are you? (We ask this to provide age-appropriate medical guidance)", type: "number" },
+        gender: { label: "What is your gender? (Male/Female/Other)", type: "text" },
+        duration: { label: "How long have you been feeling this way? (e.g., 2 days, 1 week)", type: "text" },
+        pain_level: { label: "On a scale of 1 to 10, how intense is the discomfort?", type: "number" },
+        pain_spread: { label: "Is the pain spreading to your arms, neck, or back? (Yes/No)", type: "text" },
+        sweating: { label: "Are you experiencing any unusual sweating or nausea along with this? (Yes/No)", type: "text" },
+        at_rest: { label: "Do you feel short of breath even while sitting or lying down? (Yes/No)", type: "text" },
+        breath_onset: { label: "Did the breathing difficulty start suddenly or gradually? (Suddenly/Gradually)", type: "text" },
+        temp_level: { label: "Is your fever very high (above 102°F or 39°C)? (Yes/No)", type: "text" },
+        respiratory_issues: { label: "Do you have a persistent cough or chest congestion? (Yes/No)", type: "text" }
+    };
+
     app.post('/api/intake/next-question', (req, res) => {
         const { answers, symptom } = req.body;
-        if (!symptom) return res.json({ isComplete: false, nextQuestion: { id: 'mainSymptom', type: 'text', label: 'Please describe your main symptom briefly.' } });
-        const symptomsOrder = ['age', 'gender', 'pain_level', 'duration', 'is_smoker'];
-        const currentIdx = symptomsOrder.indexOf(Object.keys(answers).pop() || 'mainSymptom');
-        const nextId = symptomsOrder[currentIdx + 1];
+        if (!symptom) return res.json({ isComplete: false, nextQuestion: { id: 'mainSymptom', type: 'text', label: 'Welcome to SAHAY. In your own words, please tell me what health symptoms you are experiencing today?' } });
+
+        let flow = ['age', 'gender', 'duration'];
+        if (symptom.includes('chest') || symptom.includes('heart')) {
+            flow = [...flow, 'pain_level', 'pain_spread', 'sweating'];
+        } else if (symptom.includes('breath') || symptom.includes('suffoc')) {
+            flow = [...flow, 'at_rest', 'breath_onset'];
+        } else if (symptom.includes('fever') || symptom.includes('temp')) {
+            flow = [...flow, 'temp_level', 'respiratory_issues'];
+        } else {
+            flow = [...flow, 'pain_level'];
+        }
+
+        const answeredKeys = Object.keys(answers);
+        const nextId = flow.find(k => !answeredKeys.includes(k));
+
         if (!nextId) return res.json({ isComplete: true });
-        res.json({ isComplete: false, nextQuestion: { id: nextId, type: 'text', label: `Please provide: ${nextId}` } });
+
+        const q = QUESTION_BANK[nextId] || { label: `Please tell me more about your ${nextId}`, type: 'text' };
+        res.json({ isComplete: false, nextQuestion: { id: nextId, ...q } });
     });
 
     app.post('/api/intake/finalize', async (req, res) => {
