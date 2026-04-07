@@ -26,6 +26,14 @@ let db;
 
 async function start() {
     db = await open({ filename: path.join(__dirname, '../database.db'), driver: sqlite3.Database });
+    await db.run(`CREATE TABLE IF NOT EXISTS prescriptions (
+        id TEXT PRIMARY KEY,
+        patientId TEXT,
+        doctorId TEXT,
+        notes TEXT,
+        medicines TEXT,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 
     // --- Auth ---
     app.post('/api/auth/login', async (req, res) => {
@@ -61,7 +69,7 @@ async function start() {
         await db.run('DELETE FROM queue WHERE patientId = ?', profile.id);
         await db.run(`INSERT INTO queue (id, patientId, doctorId, severity, priority, reasoning, status, callRoomId)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuidv4(), profile.id, doctorId || null, triage.severity, triage.score, summary, 'WAITING', `room-${uuidv4().slice(0, 8)}`]);
+            [uuidv4(), profile.id, doctorId || null, triage.severity, triage.score, JSON.stringify({ summary, flags: triage.flags || [] }), 'WAITING', `room-${uuidv4().slice(0, 8)}`]);
 
         io.emit('queue_updated');
         res.json({ success: true, triage, summary });
@@ -95,15 +103,29 @@ async function start() {
     });
 
     app.post('/api/doctor/action', async (req, res) => {
-        const { queueId, action } = req.body;
+        const { queueId, action, peerId } = req.body;
         const status = action === 'START_CONSULTATION' ? 'IN_CONSULTATION' : 'COMPLETED';
         await db.run('UPDATE queue SET status = ? WHERE id = ?', [status, queueId]);
         if (action === 'START_CONSULTATION') {
             const entry = await db.get('SELECT * FROM queue WHERE id = ?', queueId);
-            io.emit('call_started', { queueId, roomId: entry.callRoomId, patientId: entry.patientId });
+            io.emit('call_started', { queueId, roomId: entry.callRoomId, patientId: entry.patientId, doctorPeerId: peerId });
         }
         io.emit('queue_updated');
         res.json({ success: true });
+    });
+
+    app.post('/api/prescription/add', async (req, res) => {
+        const { patientId, doctorId, notes, medicines } = req.body;
+        await db.run('INSERT INTO prescriptions (id, patientId, doctorId, notes, medicines) VALUES (?, ?, ?, ?, ?)',
+            [uuidv4(), patientId, doctorId, notes, JSON.stringify(medicines)]);
+        res.json({ success: true });
+    });
+
+    app.get('/api/patient/prescriptions/:userId', async (req, res) => {
+        const p = await db.get('SELECT id FROM patient_profiles WHERE userId = ?', req.params.userId);
+        if (!p) return res.json([]);
+        const list = await db.all('SELECT * FROM prescriptions WHERE patientId = ? ORDER BY createdAt DESC', p.id);
+        res.json(list);
     });
 
     // --- Core API ---

@@ -48,13 +48,20 @@ class TriageService {
     // 🏛 Scoring Engine Incorporating Medical History
     const severityWeight = SEVERITY_LEVELS[severity].weight;
     const historyRisk = history.some(h => h && h.length > 0) ? 15 : 0;
-    const baseScore = severityWeight + historyRisk + (age / 100) * 5;
+    const score = severityWeight + historyRisk + (age / 100) * 5;
+
+    const flags = [];
+    if (score > 80) flags.push("CRITICAL_THRESHOLD");
+    if (pedsRisk) flags.push("PEDIATRIC_WATCH");
+    if (data.history?.some(h => h?.includes('Heart') || h?.includes('Diabetes'))) flags.push("CHRONIC_COMORBIDITY");
+    if (data.symptoms?.includes('chest_pain')) flags.push("CARDIAC_RISK");
 
     return {
       severity,
-      score: baseScore,
-      reasoning,
+      score,
       confidence,
+      flags,
+      reasoning: `Patient shows ${severity} severity (${score}% risk). ${pedsRisk ? 'Pediatric priority flagged.' : ''} ${flags.length ? 'Flags: ' + flags.join(', ') : ''}`,
       clinicalSummary: `${severity} Priority | Confidence: ${confidence}% | Reasoning: ${reasoning}`
     };
   }
